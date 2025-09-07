@@ -124,7 +124,7 @@ export const OfflineProvider: React.FC<OfflineProviderProps> = ({ children }) =>
       // Sync tickets
       for (const ticket of offlineData.tickets) {
         try {
-          const response = await fetch('/api/tickets', {
+          const response = await fetch('http://localhost:6001/api/tickets', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
