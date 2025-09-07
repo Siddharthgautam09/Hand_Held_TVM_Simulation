@@ -1,12 +1,12 @@
-import express from 'express';
+    import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
 
+import { connectDB, disconnectDB } from './db';
 import authRoutes from './routes/auth';
 import ticketRoutes from './routes/tickets';
 import passRoutes from './routes/passes';
@@ -68,16 +68,7 @@ app.use('*', (req, res) => {
   });
 });
 
-// Database connection
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/htvm');
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error('Database connection error:', error);
-    process.exit(1);
-  }
-};
+// Initialize services and connections below
 
 // Initialize MQTT service
 const mqttService = new MQTTService();
@@ -85,9 +76,13 @@ const mqttService = new MQTTService();
 // Start server
 const startServer = async () => {
   try {
+    // Connect to MongoDB
     await connectDB();
+    
+    // Connect to MQTT broker
     await mqttService.connect();
     
+    // Start Express server
     app.listen(PORT, () => {
       console.log(`HTVM Backend Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
@@ -103,14 +98,14 @@ const startServer = async () => {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully');
   await mqttService.disconnect();
-  await mongoose.connection.close();
+  await disconnectDB();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully');
   await mqttService.disconnect();
-  await mongoose.connection.close();
+  await disconnectDB();
   process.exit(0);
 });
 
