@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: htvm-mqtt-broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "1884:1884"  # WebSocket port
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./data:/mosquitto/data
+      - ./logs:/mosquitto/log
+    networks:
+      - htvm-network
+
+  # Optional: MQTT Explorer for debugging
+  mqtt-explorer:
+    image: smeagolworms4/mqtt-explorer
+    container_name: htvm-mqtt-explorer
+    ports:
+      - "4000:4000"
+    networks:
+      - htvm-network
+    depends_on:
+      - mosquitto
+
+networks:
+  htvm-network:
+    driver: bridge
+
+volumes:
+  mqtt-data:
+  mqtt-logs:
