@@ -13,28 +13,12 @@ router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
     // Check if conductor exists
-    let conductor = await Conductor.findOne({ username });
-    
+    const conductor = await Conductor.findOne({ username });
     if (!conductor) {
-      // For demo purposes, create default conductors if they don't exist
-      if (username === 'conductor001') {
-        const hashedPassword = await bcrypt.hash('demo123', 12);
-        conductor = new Conductor({
-          id: 'C001',
-          username: 'conductor001',
-          password: hashedPassword,
-          name: 'John Doe',
-          busId: 'B101',
-          route: 'R12',
-          isActive: true
-        });
-        await conductor.save();
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid credentials'
-        });
-      }
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
     }
 
     // Check password

@@ -32,6 +32,28 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
   // Generate a default bus ID for simulation
   const busID = `BUS-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
   const [watchId, setWatchId] = useState<number | null>(null);
+  const [autoSaveInterval, setAutoSaveInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Function to save location to MongoDB
+  const saveLocationToMongoDB = async (location: Location) => {
+    try {
+      const response = await fetch('/api/locations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(location),
+      });
+      
+      if (response.ok) {
+        console.log('Location saved to MongoDB successfully');
+      } else {
+        console.error('Failed to save location to MongoDB');
+      }
+    } catch (error) {
+      console.error('Error saving location to MongoDB:', error);
+    }
+  };
 
   const startTracking = () => {
     if (!navigator.geolocation) {
@@ -67,6 +89,15 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     );
     
     setWatchId(id);
+
+    // Start auto-saving location every 10 seconds
+    const interval = setInterval(() => {
+      if (currentLocation) {
+        saveLocationToMongoDB(currentLocation);
+      }
+    }, 10000); // 10 seconds
+    
+    setAutoSaveInterval(interval);
   };
 
   const fallbackToGPRS = () => {
@@ -86,6 +117,9 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     
     setCurrentLocation(location);
     setLocationSource('GPRS');
+    
+    // Save GPRS location to MongoDB
+    saveLocationToMongoDB(location);
   };
 
   const setManualLocation = (manualLoc: { lat: number; lng: number; stopName: string }) => {
@@ -99,12 +133,19 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
     
     setCurrentLocation(location);
     setLocationSource('Manual');
+    
+    // Save manual location to MongoDB
+    saveLocationToMongoDB(location);
   };
 
   const stopTracking = () => {
     if (watchId) {
       navigator.geolocation.clearWatch(watchId);
       setWatchId(null);
+    }
+    if (autoSaveInterval) {
+      clearInterval(autoSaveInterval);
+      setAutoSaveInterval(null);
     }
     setIsTracking(false);
   };
@@ -114,8 +155,11 @@ export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) 
       if (watchId) {
         navigator.geolocation.clearWatch(watchId);
       }
+      if (autoSaveInterval) {
+        clearInterval(autoSaveInterval);
+      }
     };
-  }, [watchId]);
+  }, [watchId, autoSaveInterval]);
 
   return (
     <LocationContext.Provider value={{
