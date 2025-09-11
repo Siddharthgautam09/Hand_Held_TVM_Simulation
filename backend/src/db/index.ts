@@ -1,4 +1,7 @@
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 /**
  * MongoDB Connection
@@ -25,19 +28,17 @@ if (!uri) throw new Error('MONGODB_URI is not defined in environment variables')
 export const connectDB = async (): Promise<typeof mongoose> => {
   try {
     const conn = await mongoose.connect(uri, options);
-    console.log(`
- MONGO DB Connected !! DB HOST:
-            ${conn.connection.host}
-    `);
-  
+
+    console.log('MONGO DB Connected !! DB HOST: ' + conn.connection.host);
+
     // Handle connection errors after initial connection
     mongoose.connection.on('error', (err) => {
-      console.error(`MongoDB connection error: ${err}`);
+      console.error('MongoDB connection error:', err);
     });
-    
+
     return mongoose;
   } catch (error) {
-    console.error(`Error connecting to MongoDB: ${error}`);
+    console.error('Error connecting to MongoDB:', error);
     process.exit(1); // Exit with failure
   }
 };
@@ -50,7 +51,7 @@ export const disconnectDB = async (): Promise<void> => {
     await mongoose.disconnect();
     console.log('MongoDB disconnected');
   } catch (error) {
-    console.error(`Error disconnecting from MongoDB: ${error}`);
+    console.error('Error disconnecting from MongoDB:', error);
   }
 };
 
