@@ -165,7 +165,7 @@ const TicketingApp: React.FC = () => {
       } else {
         // Send to backend
         try {
-          await fetch('http://localhost:6001/api/tickets', {
+              await fetch('/api/tickets', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ticket)
