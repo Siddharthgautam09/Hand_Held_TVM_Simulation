@@ -15,7 +15,8 @@ const options = {
 };
 
 // MongoDB URI from environment variables
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/htvm';
+const uri = process.env.MONGODB_URI;
+if (!uri) throw new Error('MONGODB_URI is not defined in environment variables');
 
 /**
  * Connect to MongoDB
@@ -23,13 +24,12 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/htvm';
  */
 export const connectDB = async (): Promise<typeof mongoose> => {
   try {
-    const conn = await mongoose.connect(MONGODB_URI);
-    
+    const conn = await mongoose.connect(uri, options);
     console.log(`
  MONGO DB Connected !! DB HOST:
             ${conn.connection.host}
     `);
-    
+  
     // Handle connection errors after initial connection
     mongoose.connection.on('error', (err) => {
       console.error(`MongoDB connection error: ${err}`);
