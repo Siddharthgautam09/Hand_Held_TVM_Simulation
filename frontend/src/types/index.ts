@@ -13,6 +13,7 @@ export interface Ticket {
   };
   PassID?: string;
   QRCode?: string;
+  ConductorID: string;
 }
 
 export interface Location {

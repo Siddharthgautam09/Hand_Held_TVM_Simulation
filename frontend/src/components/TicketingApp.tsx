@@ -137,7 +137,8 @@ const TicketingApp: React.FC = () => {
         lat: currentLocation.lat,
         lng: currentLocation.lng
       },
-      PassID: validatedPass?.passId || undefined
+      PassID: validatedPass?.passId || undefined,
+      ConductorID: conductor.id
     };
 
     try {
