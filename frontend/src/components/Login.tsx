@@ -28,11 +28,6 @@ const Login: React.FC = () => {
   };
 
   // Demo credentials for simulation
-  const useDemoCredentials = () => {
-    setUsername('conductor001');
-    setPassword('demo123');
-  };
-
   return (
     <div className="htvm-container">
       <div className="ticket-form">
@@ -68,15 +63,6 @@ const Login: React.FC = () => {
         </form>
 
         <div className="mt-4">
-          <button onClick={useDemoCredentials} className="btn-secondary w-full">
-            Use Demo Credentials
-          </button>
-        </div>
-
-        <div className="mt-4 text-sm text-gray-600">
-          <p><strong>Demo Credentials:</strong></p>
-          <p>Username: conductor001</p>
-          <p>Password: demo123</p>
         </div>
       </div>
     </div>
