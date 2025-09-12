@@ -120,14 +120,20 @@ const TicketingApp: React.FC = () => {
       return;
     }
 
+    // Debug conductor object
+    console.log('Conductor object:', conductor);
+    console.log('Conductor ID:', conductor.id);
+    console.log('Conductor busId:', conductor.busId);
+    console.log('Conductor route:', conductor.route);
+
     const baseFare = calculateFare(source, destination);
     const discount = validatedPass ? (baseFare * validatedPass.discount) / 100 : 0;
     const finalFare = Math.max(0, baseFare - discount);
 
     const ticket: Ticket = {
       TicketID: `T${Date.now()}`,
-      BusID: conductor.busId,
-      Route: conductor.route,
+      BusID: conductor.busId || 'UNKNOWN_BUS',
+      Route: conductor.route || 'UNKNOWN_ROUTE',
       Source: source,
       Destination: destination,
       Fare: finalFare,
@@ -138,8 +144,10 @@ const TicketingApp: React.FC = () => {
         lng: currentLocation.lng
       },
       PassID: validatedPass?.passId || undefined,
-      ConductorID: conductor.id
+      ConductorID: conductor.id || 'UNKNOWN_CONDUCTOR'
     };
+
+    console.log('Ticket object being sent:', ticket);
 
     try {
       // Generate QR Code
@@ -166,14 +174,25 @@ const TicketingApp: React.FC = () => {
       } else {
         // Send to backend
         try {
-              await fetch('/api/tickets', {
+          const response = await fetch('/api/tickets', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ticket)
           });
+          
+          if (response.ok) {
+            console.log('Ticket saved successfully to backend!');
+            alert('Ticket generated and saved to database.');
+          } else {
+            const errorText = await response.text();
+            console.error('Server error saving ticket:', response.status, errorText);
+            alert(`Error saving ticket: ${response.status} ${response.statusText}`);
+            await saveTicketOffline(ticket);
+          }
         } catch (error) {
           console.error('Error saving ticket to backend:', error);
           await saveTicketOffline(ticket);
+          alert('Network error saving ticket. Saved offline.');
         }
       }
 

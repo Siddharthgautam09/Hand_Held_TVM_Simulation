@@ -33,10 +33,12 @@ router.post('/', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error creating ticket:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error creating ticket:', errorMessage);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: errorMessage
     });
   }
 });
