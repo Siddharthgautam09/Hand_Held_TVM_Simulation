@@ -1,16 +1,182 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Location } from '../types';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import { useAuth } from './AuthContext';
+import { useOffline } from './OfflineContext';
 
-interface LocationContextType {
-  currentLocation: Location | null;
-  locationSource: 'GPS' | 'GPRS' | 'Manual';
-  startTracking: () => void;
-  stopTracking: () => void;
-  setManualLocation: (location: { lat: number; lng: number; stopName: string }) => void;
-  isTracking: boolean;
+interface LocationContextProps {
+  children: React.ReactNode;
 }
 
-const LocationContext = createContext<LocationContextType | undefined>(undefined);
+interface Coordinates {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  source?: string;
+  timestamp?: string;
+}
+
+interface LocationContextType {
+  currentLocation: Coordinates | null;
+  isTracking: boolean;
+  startTracking: () => void;
+  stopTracking: () => void;
+  setManualLocation: (location: Coordinates) => void;
+}
+
+const LocationContext = createContext<LocationContextType | null>(null);
+
+export const LocationProvider: React.FC<LocationContextProps> = ({ children }) => {
+  const [currentLocation, setCurrentLocation] = useState<Coordinates | null>(null);
+  const [isTracking, setIsTracking] = useState(false);
+  const { conductor } = useAuth();
+  const { isOnline, addOfflineData } = useOffline();
+  const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Start tracking location
+  const startTracking = () => {
+    setIsTracking(true);
+  };
+  
+  // Stop tracking location
+  const stopTracking = () => {
+    setIsTracking(false);
+    if (locationIntervalRef.current) {
+      clearInterval(locationIntervalRef.current);
+      locationIntervalRef.current = null;
+    }
+  };
+  
+  // Set manual location
+  const setManualLocation = (location: Coordinates) => {
+    const updatedLocation = {
+      ...location,
+      source: 'Manual',
+      accuracy: location.accuracy || 0,
+      timestamp: new Date().toISOString()
+    };
+    setCurrentLocation(updatedLocation);
+    saveLiveLocation(updatedLocation);
+  };
+
+  const saveLiveLocation = async (location: Coordinates) => {
+    if (!conductor) return;
+    
+    const locationData = {
+      BusID: conductor.busId,
+      ConductorID: conductor.id,
+      Route: conductor.route,
+      lat: location.lat,
+      lng: location.lng,
+      accuracy: location.accuracy || 0,
+      source: location.source || 'GPS',
+      isOnline: isOnline,
+      timestamp: new Date().toISOString()
+    };
+    
+    if (isOnline) {
+      try {
+        await fetch('/api/liveLocation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(locationData)
+        });
+      } catch (error) {
+        console.error('Error saving location:', error);
+        // Save failed location update to offline storage
+        addOfflineData('liveLocation', locationData);
+      }
+    } else {
+      // Save to offline storage when device is offline
+      addOfflineData('liveLocation', locationData);
+    }
+  };
+
+  // Use GPS to get location with fallback to GPRS
+  useEffect(() => {
+    if (!isTracking || !conductor) return;
+    
+    let watchId: number;
+    
+    // Function to get location via GPS
+    const getGPSLocation = () => {
+      if (navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            const newLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              source: 'GPS',
+              timestamp: new Date().toISOString()
+            };
+            setCurrentLocation(newLocation);
+            saveLiveLocation(newLocation);
+          },
+          (error) => {
+            console.log('GPS Error:', error);
+            // Fallback to GPRS if GPS fails
+            fallbackToGPRS();
+          },
+          {
+            enableHighAccuracy: true, // Use GPS when available
+            timeout: 5000,            // Wait up to 5 seconds
+            maximumAge: 0             // Don't use cached position
+          }
+        );
+      } else {
+        fallbackToGPRS();
+      }
+    };
+    
+    // Fallback to GPRS/Network-based location
+    const fallbackToGPRS = async () => {
+      try {
+        // In a real app, you would use a service like ipapi.co or browser-based geolocation with low accuracy
+        // Here we're simulating GPRS location with reduced accuracy
+        const response = await fetch('https://ipapi.co/json/');
+        const data = await response.json();
+        
+        const gprsLocation = {
+          lat: data.latitude,
+          lng: data.longitude,
+          accuracy: 1000, // GPRS typically has lower accuracy (~1000m)
+          source: 'GPRS'
+        };
+        
+        setCurrentLocation(gprsLocation);
+        saveLiveLocation(gprsLocation);
+      } catch (error) {
+        console.error('GPRS fallback failed:', error);
+      }
+    };
+    
+    // Initial location fetch
+    getGPSLocation();
+    
+    // Set up interval to update location every 10 seconds
+    locationIntervalRef.current = setInterval(() => {
+      getGPSLocation();
+    }, 10000);
+    
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+    };
+  }, [isTracking, conductor, isOnline, addOfflineData]);
+  
+  const contextValue = {
+    currentLocation,
+    isTracking,
+    startTracking,
+    stopTracking,
+    setManualLocation
+  };
+  
+  return (
+    <LocationContext.Provider value={contextValue}>
+      {children}
+    </LocationContext.Provider>
+  );
+};
 
 export const useLocation = () => {
   const context = useContext(LocationContext);
@@ -18,159 +184,4 @@ export const useLocation = () => {
     throw new Error('useLocation must be used within a LocationProvider');
   }
   return context;
-};
-
-interface LocationProviderProps {
-  children: ReactNode;
-}
-
-export const LocationProvider: React.FC<LocationProviderProps> = ({ children }) => {
-  const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
-  const [locationSource, setLocationSource] = useState<'GPS' | 'GPRS' | 'Manual'>('GPS');
-  const [isTracking, setIsTracking] = useState(false);
-  
-  // Generate a default bus ID for simulation
-  const busID = `BUS-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-  const [watchId, setWatchId] = useState<number | null>(null);
-  const [autoSaveInterval, setAutoSaveInterval] = useState<NodeJS.Timeout | null>(null);
-
-  // Function to save location to MongoDB
-  const saveLocationToMongoDB = async (location: Location) => {
-    try {
-      const response = await fetch('/api/locations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(location),
-      });
-      
-      if (response.ok) {
-        console.log('Location saved to MongoDB successfully');
-      } else {
-        console.error('Failed to save location to MongoDB');
-      }
-    } catch (error) {
-      console.error('Error saving location to MongoDB:', error);
-    }
-  };
-
-  const startTracking = () => {
-    if (!navigator.geolocation) {
-      console.error('Geolocation is not supported');
-      fallbackToGPRS();
-      return;
-    }
-
-    setIsTracking(true);
-    
-    const id = navigator.geolocation.watchPosition(
-      (position) => {
-        const location: Location = {
-          BusID: busID,
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: new Date().toISOString(),
-          source: 'GPS'
-        };
-        setCurrentLocation(location);
-        setLocationSource('GPS');
-      },
-      (error) => {
-        console.error('GPS error:', error);
-        fallbackToGPRS();
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
-      }
-    );
-    
-    setWatchId(id);
-
-    // Start auto-saving location every 10 seconds
-    const interval = setInterval(() => {
-      if (currentLocation) {
-        saveLocationToMongoDB(currentLocation);
-      }
-    }, 10000); // 10 seconds
-    
-    setAutoSaveInterval(interval);
-  };
-
-  const fallbackToGPRS = () => {
-    // Simulate GPRS location (network triangulation)
-    // In real implementation, this would call a cellular network API
-    const baseLocation = { lat: 28.6139, lng: 77.2090 }; // Delhi center
-    const randomOffset = () => (Math.random() - 0.5) * 0.01; // ~500m radius
-    
-    const location: Location = {
-      BusID: busID,
-      lat: baseLocation.lat + randomOffset(),
-      lng: baseLocation.lng + randomOffset(),
-      accuracy: 500,
-      timestamp: new Date().toISOString(),
-      source: 'GPRS'
-    };
-    
-    setCurrentLocation(location);
-    setLocationSource('GPRS');
-    
-    // Save GPRS location to MongoDB
-    saveLocationToMongoDB(location);
-  };
-
-  const setManualLocation = (manualLoc: { lat: number; lng: number; stopName: string }) => {
-    const location: Location = {
-      BusID: busID,
-      lat: manualLoc.lat,
-      lng: manualLoc.lng,
-      timestamp: new Date().toISOString(),
-      source: 'Manual'
-    };
-    
-    setCurrentLocation(location);
-    setLocationSource('Manual');
-    
-    // Save manual location to MongoDB
-    saveLocationToMongoDB(location);
-  };
-
-  const stopTracking = () => {
-    if (watchId) {
-      navigator.geolocation.clearWatch(watchId);
-      setWatchId(null);
-    }
-    if (autoSaveInterval) {
-      clearInterval(autoSaveInterval);
-      setAutoSaveInterval(null);
-    }
-    setIsTracking(false);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-      }
-      if (autoSaveInterval) {
-        clearInterval(autoSaveInterval);
-      }
-    };
-  }, [watchId, autoSaveInterval]);
-
-  return (
-    <LocationContext.Provider value={{
-      currentLocation,
-      locationSource,
-      startTracking,
-      stopTracking,
-      setManualLocation,
-      isTracking
-    }}>
-      {children}
-    </LocationContext.Provider>
-  );
 };

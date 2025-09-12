@@ -27,10 +27,12 @@ export interface Location {
 
 export interface RFIDPass {
   passId: string;
+  balance: number;
+  validUntil: string;
+  passType: 'monthly' | 'quarterly';
+  discount: number;
   valid: boolean;
-  type: 'student' | 'senior' | 'disabled' | 'employee';
-  discount: number; // percentage
-  expiryDate?: string;
+  type: string;
 }
 
 export interface Conductor {
@@ -54,9 +56,22 @@ export interface MQTTMessage {
   timestamp: string;
 }
 
+export interface LiveLocation {
+  BusID: string;
+  ConductorID: string;
+  Route: string;
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  source?: string;
+  timestamp: string;
+  isOnline: boolean;
+}
+
 export interface OfflineData {
   tickets: Ticket[];
   locations: Location[];
+  liveLocation: LiveLocation[];
   lastSync: string;
 }
 

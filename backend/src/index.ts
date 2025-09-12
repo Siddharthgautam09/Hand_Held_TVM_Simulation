@@ -14,6 +14,7 @@ import locationRoutes from './routes/locations';
 import reportsRoutes from './routes/reports';
 import { MQTTService } from './services/mqttService';
 import { errorHandler } from './middleware/errorHandler';
+import liveLocationRoutes from './routes/liveLocation';
 
 // Load environment variables
 dotenv.config();
@@ -46,6 +47,7 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/pass', passRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/liveLocation', liveLocationRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

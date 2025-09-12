@@ -6,6 +6,7 @@ import { useMQTT } from '../context/MQTTContext';
 import { useOffline } from '../context/OfflineContext';
 import { Ticket, RFIDPass, BusStop } from '../types';
 import QRCode from 'qrcode';
+import LocationStatus from './LocationStatus';
 
 const busStops: BusStop[] = [
   { id: 'stop1', name: 'Central Station', lat: 28.6139, lng: 77.2090, routes: ['R12', 'R15'] },
@@ -30,9 +31,9 @@ const fareTable = [
 
 const TicketingApp: React.FC = () => {
   const { conductor } = useAuth();
-  const { currentLocation, locationSource, startTracking, setManualLocation, isTracking } = useLocation();
+  const { currentLocation, startTracking, setManualLocation, isTracking } = useLocation();
   const { publishMessage, isConnected: mqttConnected } = useMQTT();
-  const { isOnline, saveTicketOffline, saveLocationOffline } = useOffline();
+  const { isOnline, addOfflineData } = useOffline();
 
   const [source, setSource] = useState('');
   const [destination, setDestination] = useState('');
@@ -64,10 +65,10 @@ const TicketingApp: React.FC = () => {
       }
       
       if (!isOnline) {
-        saveLocationOffline(currentLocation);
+        addOfflineData('locations', locationMessage as unknown as Location);
       }
     }
-  }, [currentLocation, conductor, mqttConnected, isOnline]);
+  }, [currentLocation, conductor, mqttConnected, isOnline, publishMessage, addOfflineData]);
 
   const calculateFare = (src: string, dest: string): number => {
     const route = fareTable.find(
@@ -170,7 +171,7 @@ const TicketingApp: React.FC = () => {
 
       // Save offline if needed
       if (!isOnline) {
-        await saveTicketOffline(ticket);
+        await addOfflineData('tickets', ticket);
       } else {
         // Send to backend
         try {
@@ -187,11 +188,11 @@ const TicketingApp: React.FC = () => {
             const errorText = await response.text();
             console.error('Server error saving ticket:', response.status, errorText);
             alert(`Error saving ticket: ${response.status} ${response.statusText}`);
-            await saveTicketOffline(ticket);
+            await addOfflineData('tickets', ticket);
           }
         } catch (error) {
           console.error('Error saving ticket to backend:', error);
-          await saveTicketOffline(ticket);
+          await addOfflineData('tickets', ticket);
           alert('Network error saving ticket. Saved offline.');
         }
       }
@@ -223,9 +224,11 @@ const TicketingApp: React.FC = () => {
   const handleManualLocation = (stopName: string) => {
     const stop = busStops.find(s => s.name === stopName);
     if (stop) {
-      setManualLocation({ lat: stop.lat, lng: stop.lng, stopName });
+      setManualLocation({ lat: stop.lat, lng: stop.lng });
     }
   };
+
+  const locationSource = currentLocation?.source || 'N/A';
 
   if (!conductor) {
     return (
@@ -255,6 +258,10 @@ const TicketingApp: React.FC = () => {
               MQTT {mqttConnected ? 'Connected' : 'Disconnected'}
             </div>
           </div>
+        </div>
+
+        <div className="mb-4">
+          <LocationStatus />
         </div>
 
         {/* Location Status */}

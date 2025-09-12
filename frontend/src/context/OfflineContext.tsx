@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
-import { Ticket, Location, OfflineData } from '../types';
+import { Ticket, Location, LiveLocation, OfflineData } from '../types';
 
 interface OfflineDB extends DBSchema {
   tickets: {
@@ -11,19 +11,24 @@ interface OfflineDB extends DBSchema {
     key: string;
     value: Location;
   };
+  liveLocation: {
+    key: string;
+    value: LiveLocation;
+  };
   sync: {
     key: string;
-    value: { lastSync: string };
+    value: { id: string, lastSync: string };
   };
 }
 
+type StoreName = 'tickets' | 'locations' | 'liveLocation';
+
 interface OfflineContextType {
   isOnline: boolean;
-  saveTicketOffline: (ticket: Ticket) => Promise<void>;
-  saveLocationOffline: (location: Location) => Promise<void>;
+  addOfflineData: (storeName: StoreName, data: any) => Promise<void>;
   syncOfflineData: () => Promise<void>;
   getOfflineData: () => Promise<OfflineData>;
-  clearOfflineData: () => Promise<void>;
+  clearOfflineData: (storeName?: StoreName) => Promise<void>;
 }
 
 const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
@@ -46,16 +51,23 @@ export const OfflineProvider: React.FC<OfflineProviderProps> = ({ children }) =>
 
   useEffect(() => {
     const initDB = async () => {
-      const database = await openDB<OfflineDB>('HTVMOfflineDB', 1, {
-        upgrade(db) {
-          if (!db.objectStoreNames.contains('tickets')) {
-            db.createObjectStore('tickets', { keyPath: 'TicketID' });
+      const database = await openDB<OfflineDB>('HTVMOfflineDB', 2, { // Incremented version to 2
+        upgrade(db, oldVersion) {
+          if (oldVersion < 1) {
+            if (!db.objectStoreNames.contains('tickets')) {
+              db.createObjectStore('tickets', { keyPath: 'TicketID' });
+            }
+            if (!db.objectStoreNames.contains('locations')) {
+              db.createObjectStore('locations', { keyPath: 'timestamp' });
+            }
+            if (!db.objectStoreNames.contains('sync')) {
+              db.createObjectStore('sync', { keyPath: 'id' });
+            }
           }
-          if (!db.objectStoreNames.contains('locations')) {
-            db.createObjectStore('locations', { keyPath: 'timestamp' });
-          }
-          if (!db.objectStoreNames.contains('sync')) {
-            db.createObjectStore('sync', { keyPath: 'id' });
+          if (oldVersion < 2) {
+            if (!db.objectStoreNames.contains('liveLocation')) {
+              db.createObjectStore('liveLocation', { autoIncrement: true });
+            }
           }
         },
       });
@@ -76,42 +88,34 @@ export const OfflineProvider: React.FC<OfflineProviderProps> = ({ children }) =>
     };
   }, []);
 
-  const saveTicketOffline = async (ticket: Ticket) => {
+  const addOfflineData = async (storeName: StoreName, data: any) => {
     if (!db) return;
     try {
-      await db.put('tickets', ticket);
-      console.log('Ticket saved offline:', ticket.TicketID);
+      await db.put(storeName, data);
+      console.log(`Data saved offline to ${storeName}:`, data);
     } catch (error) {
-      console.error('Error saving ticket offline:', error);
-    }
-  };
-
-  const saveLocationOffline = async (location: Location) => {
-    if (!db) return;
-    try {
-      await db.put('locations', location);
-      console.log('Location saved offline:', location.timestamp);
-    } catch (error) {
-      console.error('Error saving location offline:', error);
+      console.error(`Error saving data offline to ${storeName}:`, error);
     }
   };
 
   const getOfflineData = async (): Promise<OfflineData> => {
-    if (!db) return { tickets: [], locations: [], lastSync: '' };
+    if (!db) return { tickets: [], locations: [], liveLocation: [], lastSync: '' };
 
     try {
       const tickets = await db.getAll('tickets');
       const locations = await db.getAll('locations');
+      const liveLocation = await db.getAll('liveLocation');
       const syncData = await db.get('sync', 'lastSync');
       
       return {
         tickets,
         locations,
+        liveLocation,
         lastSync: syncData?.lastSync || ''
       };
     } catch (error) {
       console.error('Error getting offline data:', error);
-      return { tickets: [], locations: [], lastSync: '' };
+      return { tickets: [], locations: [], liveLocation: [], lastSync: '' };
     }
   };
 
@@ -122,47 +126,59 @@ export const OfflineProvider: React.FC<OfflineProviderProps> = ({ children }) =>
       const offlineData = await getOfflineData();
       
       // Sync tickets
-      for (const ticket of offlineData.tickets) {
-        try {
-          const response = await fetch('http://localhost:6001/api/tickets', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(ticket),
-          });
-          
-          if (response.ok) {
-            await db.delete('tickets', ticket.TicketID);
-            console.log('Ticket synced:', ticket.TicketID);
+      if (offlineData.tickets.length > 0) {
+        for (const ticket of offlineData.tickets) {
+          try {
+            const response = await fetch('/api/tickets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(ticket),
+            });
+            if (response.ok) {
+              await db.delete('tickets', ticket.TicketID);
+            }
+          } catch (error) {
+            console.error('Error syncing ticket:', error);
           }
-        } catch (error) {
-          console.error('Error syncing ticket:', error);
         }
       }
 
-      // Sync locations
-      for (const location of offlineData.locations) {
+      // Sync locations (assuming this is for a different purpose than liveLocation)
+      if (offlineData.locations.length > 0) {
+        for (const location of offlineData.locations) {
+          try {
+            const response = await fetch('/api/locations', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(location),
+            });
+            if (response.ok) {
+              await db.delete('locations', location.timestamp);
+            }
+          } catch (error) {
+            console.error('Error syncing location:', error);
+          }
+        }
+      }
+
+      // Sync live locations
+      if (offlineData.liveLocation.length > 0) {
         try {
-          const response = await fetch('/api/locations', {
+          const response = await fetch('/api/liveLocation/batch', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(location),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ locations: offlineData.liveLocation })
           });
-          
           if (response.ok) {
-            await db.delete('locations', location.timestamp);
-            console.log('Location synced:', location.timestamp);
+            await db.clear('liveLocation');
           }
         } catch (error) {
-          console.error('Error syncing location:', error);
+          console.error('Failed to sync offline live locations:', error);
         }
       }
 
       // Update last sync time
-      await db.put('sync', { lastSync: new Date().toISOString() }, 'lastSync');
+      await db.put('sync', { id: 'lastSync', lastSync: new Date().toISOString() });
       
       console.log('Offline data sync completed');
     } catch (error) {
@@ -170,13 +186,18 @@ export const OfflineProvider: React.FC<OfflineProviderProps> = ({ children }) =>
     }
   };
 
-  const clearOfflineData = async () => {
+  const clearOfflineData = async (storeName?: StoreName) => {
     if (!db) return;
     
     try {
-      await db.clear('tickets');
-      await db.clear('locations');
-      console.log('Offline data cleared');
+      if (storeName) {
+        await db.clear(storeName);
+      } else {
+        await db.clear('tickets');
+        await db.clear('locations');
+        await db.clear('liveLocation');
+      }
+      console.log('Offline data cleared for:', storeName || 'all stores');
     } catch (error) {
       console.error('Error clearing offline data:', error);
     }
@@ -192,8 +213,7 @@ export const OfflineProvider: React.FC<OfflineProviderProps> = ({ children }) =>
   return (
     <OfflineContext.Provider value={{
       isOnline,
-      saveTicketOffline,
-      saveLocationOffline,
+      addOfflineData,
       syncOfflineData,
       getOfflineData,
       clearOfflineData
