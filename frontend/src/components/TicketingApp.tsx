@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Wifi, WifiOff, CreditCard, Smartphone, QrCode, Download } from 'lucide-react';
+import { MapPin, Wifi, WifiOff, CreditCard, Smartphone, QrCode, Download, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from '../context/LocationContext';
 import { useMQTT } from '../context/MQTTContext';
@@ -30,7 +30,7 @@ const fareTable = [
 ];
 
 const TicketingApp: React.FC = () => {
-  const { conductor } = useAuth();
+  const { conductor, logout } = useAuth();
   const { currentLocation, startTracking, setManualLocation, isTracking } = useLocation();
   const { publishMessage, isConnected: mqttConnected } = useMQTT();
   const { isOnline, addOfflineData } = useOffline();
@@ -244,7 +244,17 @@ const TicketingApp: React.FC = () => {
     <div className="htvm-container">
       <div className="ticket-form">
         <div className="header">
-          <h1>HTVM Simulation</h1>
+          <div className="flex justify-between items-center">
+            <h1>HTVM Simulation</h1>
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 px-3 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
           <div className="status-bar">
             <div className="status-item">
               {isOnline ? (
