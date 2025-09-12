@@ -46,10 +46,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       if (response.ok) {
-        const conductorData = await response.json();
-        setConductor(conductorData);
+        const data = await response.json();
+        setConductor(data.conductor);
         setIsAuthenticated(true);
-        localStorage.setItem('conductor', JSON.stringify(conductorData));
+        localStorage.setItem('conductor', JSON.stringify(data.conductor));
         return true;
       }
       return false;
